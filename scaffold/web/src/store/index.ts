@@ -8,13 +8,26 @@ import {
   REHYDRATE,
   persistReducer,
   persistStore,
+  type Storage,
 } from 'redux-persist';
-import storage from 'redux-persist/lib/storage';
 import inboxReducer from './inboxSlice';
+
+// Explicit async localStorage adapter avoids Vite CJS/ESM default-export interop issues with redux-persist.
+const webStorage: Storage = {
+  getItem: (key) => Promise.resolve(typeof window !== 'undefined' ? window.localStorage.getItem(key) : null),
+  setItem: (key, value) => {
+    if (typeof window !== 'undefined') window.localStorage.setItem(key, value);
+    return Promise.resolve();
+  },
+  removeItem: (key) => {
+    if (typeof window !== 'undefined') window.localStorage.removeItem(key);
+    return Promise.resolve();
+  },
+};
 
 const inboxPersistConfig = {
   key: 'switchboard_inbox',
-  storage,
+  storage: webStorage,
   // Persist only non-sensitive UI navigation state; messages and auth stay in-memory/server-side.
   whitelist: ['selectedContact', 'statusFilter'],
 };
