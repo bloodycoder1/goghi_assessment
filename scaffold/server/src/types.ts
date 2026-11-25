@@ -52,6 +52,19 @@ export interface WsEventDoc {
   createdAt: Date;
 }
 
+export type BillingStatus = 'none' | 'incomplete' | 'active' | 'past_due' | 'canceled';
+
+export interface BillingWorkspaceDoc {
+  workspace: string;
+  customerId?: string;
+  subscriptionId?: string;
+  status: BillingStatus;
+  seats: number;
+  nextActionUrl?: string | null;
+  cancelAtPeriodEnd?: boolean;
+  updatedAt: Date;
+}
+
 export interface GraderSnapshot {
   workspaces: Record<
     string,
@@ -64,6 +77,11 @@ export interface GraderSnapshot {
         }
       >;
       outbound: Record<string, OutboundStatus>;
+      billing?: {
+        status: BillingStatus;
+        seats: number;
+        can_send: boolean;
+      };
     }
   >;
 }

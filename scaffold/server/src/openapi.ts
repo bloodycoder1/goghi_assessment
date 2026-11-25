@@ -310,5 +310,69 @@ export const openApiSpec = {
         },
       },
     },
+    '/webhooks/paybox': {
+      post: {
+        summary: 'Receive signed Paybox billing webhooks',
+        responses: {
+          '200': { description: 'Webhook verified and subscription synced' },
+          '400': { description: 'Malformed payload' },
+          '401': { description: 'Invalid HMAC signature or stale timestamp' },
+        },
+      },
+    },
+    '/api/billing': {
+      get: {
+        summary: 'Get workspace billing state (admin only)',
+        security: [{ sessionCookie: [] }],
+        parameters: [{ name: 'workspace', in: 'query', required: true, schema: { type: 'string' } }],
+        responses: {
+          '200': { description: 'Billing status, seats, can_send, nextActionUrl' },
+          '401': { description: 'Unauthorized' },
+          '403': { description: 'Forbidden: admin role required' },
+        },
+      },
+    },
+    '/api/billing/subscribe': {
+      post: {
+        summary: 'Subscribe workspace using client-side Paybox card token (admin only)',
+        security: [{ sessionCookie: [] }],
+        responses: {
+          '200': { description: 'Subscription active' },
+          '402': { description: 'Payment failed or requires bank action' },
+          '403': { description: 'Forbidden: admin role required' },
+        },
+      },
+    },
+    '/api/billing/seats': {
+      post: {
+        summary: 'Update workspace seat count (admin only)',
+        security: [{ sessionCookie: [] }],
+        responses: {
+          '200': { description: 'Seats updated' },
+          '402': { description: 'Seat increase charge failed' },
+          '403': { description: 'Forbidden: admin role required' },
+        },
+      },
+    },
+    '/__grader/billing/subscribe': {
+      post: {
+        summary: 'Subscribe workspace with card token (grader only)',
+        security: [{ graderToken: [] }],
+        responses: {
+          '200': { description: 'Subscription active' },
+          '402': { description: 'Subscription not active' },
+        },
+      },
+    },
+    '/__grader/billing/seats': {
+      post: {
+        summary: 'Change workspace seats (grader only)',
+        security: [{ graderToken: [] }],
+        responses: {
+          '200': { description: 'Seats updated' },
+          '402': { description: 'Seat change failed' },
+        },
+      },
+    },
   },
 };

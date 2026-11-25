@@ -13,6 +13,7 @@ export const COLLECTIONS = {
   privateNotes: 'private_notes',
   agentKeys: 'agent_keys',
   workspaceKeyEnvelopes: 'workspace_key_envelopes',
+  billingWorkspaces: 'billing_workspaces',
 } as const;
 
 // Connects on first use. Call from anywhere: const db = await getDb();
@@ -81,6 +82,10 @@ export async function ensureIndexes(): Promise<void> {
         ),
         db.collection(COLLECTIONS.workspaceKeyEnvelopes).createIndex(
           { workspace: 1, recipientSub: 1, keyVersion: 1 },
+          { unique: true }
+        ),
+        db.collection(COLLECTIONS.billingWorkspaces).createIndex(
+          { workspace: 1 },
           { unique: true }
         ),
       ]);

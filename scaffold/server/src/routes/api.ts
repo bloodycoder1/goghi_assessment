@@ -7,6 +7,12 @@ import {
   type SessionUser,
 } from '../services/auth.js';
 import {
+  getWorkspaceBilling,
+  isWorkspaceSendAllowed,
+  subscribeWorkspace,
+  updateWorkspaceSeats,
+} from '../services/billing.js';
+import {
   claimConversation,
   getConversationMessages,
   listConversations,
@@ -149,6 +155,11 @@ apiRouter.post(
       return;
     }
 
+    if (!(await isWorkspaceSendAllowed(workspace))) {
+      res.status(402).json({ error: 'Subscription canceled or incomplete; sending disabled' });
+      return;
+    }
+
     await enqueueOutboundReply({ workspace, contact, text, clientRef });
     res.status(202).json({ ok: true, client_ref: clientRef });
   }
@@ -261,3 +272,57 @@ apiRouter.get('/search', requireWorkspaceMember, async (req: AuthedRequest, res:
   const result = await searchWorkspaceMessages(workspace, q, limit);
   res.status(200).json(result);
 });
+
+// --- Module 10: Admin-only Billing ---
+function requireWorkspaceAdmin(req: AuthedRequest, res: Response, next: NextFunction): void {
+  const workspace = getWorkspaceParam(req);
+  const member = req.user?.workspaces.find((w) => w.id === workspace);
+  if (!member || member.role !== 'admin') {
+    res.status(403).json({ error: 'Forbidden: admin role required for billing' });
+    return;
+  }
+  next();
+}
+
+apiRouter.get(
+  '/billing',
+  requireWorkspaceMember,
+  requireWorkspaceAdmin,
+  async (req: AuthedRequest, res: Response) => {
+    const workspace = getWorkspaceParam(req);
+    const billing = await getWorkspaceBilling(workspace);
+    res.status(200).json(billing);
+  }
+);
+
+apiRouter.post(
+  '/billing/subscribe',
+  requireWorkspaceMember,
+  requireWorkspaceAdmin,
+  async (req: AuthedRequest, res: Response) => {
+    const workspace = getWorkspaceParam(req);
+    const { seats, token } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof seats !== 'number' || seats < 1 || typeof token !== 'string' || !token) {
+      res.status(400).json({ error: 'seats (>=1) and token are required' });
+      return;
+    }
+    const result = await subscribeWorkspace({ workspace, seats, token });
+    res.status(result.statusCode).json(result.billing);
+  }
+);
+
+apiRouter.post(
+  '/billing/seats',
+  requireWorkspaceMember,
+  requireWorkspaceAdmin,
+  async (req: AuthedRequest, res: Response) => {
+    const workspace = getWorkspaceParam(req);
+    const { seats } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof seats !== 'number' || seats < 1) {
+      res.status(400).json({ error: 'seats (>=1) is required' });
+      return;
+    }
+    const result = await updateWorkspaceSeats({ workspace, seats });
+    res.status(result.statusCode).json(result.billing);
+  }
+);

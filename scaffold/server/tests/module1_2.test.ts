@@ -232,6 +232,11 @@ describe('Module 1 & Module 2: Foundation, Grader Contract & Pigeon Webhooks', (
               },
             },
             outbound: {},
+            billing: {
+              status: 'none',
+              seats: 0,
+              can_send: true,
+            },
           },
         },
       });

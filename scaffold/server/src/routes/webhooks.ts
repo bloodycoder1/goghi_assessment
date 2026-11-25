@@ -1,4 +1,5 @@
 import express, { Router, type Request, type Response } from 'express';
+import { handlePayboxWebhook } from '../services/billing.js';
 import {
   handlePigeonEvent,
   verifyPigeonSignature,
@@ -42,6 +43,24 @@ webhooksRouter.post(
       res.status(200).json({ ok: true });
     } catch (err) {
       console.error('pigeon webhook error:', err);
+      res.status(500).json({ error: 'Internal error' });
+    }
+  }
+);
+
+webhooksRouter.post(
+  '/paybox',
+  express.raw({ type: '*/*', limit: '1mb' }),
+  async (req: Request, res: Response) => {
+    const rawBody = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(typeof req.body === 'string' ? req.body : '');
+
+    try {
+      const result = await handlePayboxWebhook(rawBody, req.header('x-paybox-signature'));
+      res.status(result.status).json(result.body);
+    } catch (err) {
+      console.error('paybox webhook error:', err);
       res.status(500).json({ error: 'Internal error' });
     }
   }
