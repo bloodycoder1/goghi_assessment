@@ -1,6 +1,8 @@
 import express, { type Express } from 'express';
+import swaggerUi from 'swagger-ui-express';
 import { config } from './config.js';
 import { getDb } from './db.js';
+import { openApiSpec } from './openapi.js';
 import { getRedis } from './redis.js';
 import { apiRouter } from './routes/api.js';
 import { authRouter } from './routes/auth.js';
@@ -41,6 +43,11 @@ export function createApp(): Express {
       res.status(503).json({ ok: false, error: (err as Error).message });
     }
   });
+
+  app.get('/openapi.json', (_req, res) => {
+    res.status(200).json(openApiSpec);
+  });
+  app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
   app.use('/auth', authRouter);
   app.use('/api', apiRouter);

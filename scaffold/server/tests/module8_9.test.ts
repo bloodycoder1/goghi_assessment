@@ -206,4 +206,14 @@ describe('Modules 8 & 9: E2EE Private Notes & Workspace-Scoped Search', () => {
       .set('Cookie', `sb_session=${acmeSession}`)
       .expect(403);
   });
+
+  it('serves OpenAPI 3.0 spec at /openapi.json and Swagger UI at /docs/', async () => {
+    const specRes = await request(app).get('/openapi.json').expect(200);
+    expect(specRes.body.openapi).toBe('3.0.3');
+    expect(specRes.body.paths['/api/conversations']).toBeDefined();
+    expect(specRes.body.paths['/api/search']).toBeDefined();
+    expect(specRes.body.paths['/api/conversations/{contact}/notes']).toBeDefined();
+
+    await request(app).get('/docs/').expect(200);
+  });
 });
