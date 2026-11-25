@@ -1,17 +1,34 @@
-import express from 'express';
 import { createServer } from 'node:http';
+import { createApp } from './app.js';
 import { config } from './config.js';
+import { closeDb, ensureIndexes, getDb } from './db.js';
+import { closeRedis, getRedis } from './redis.js';
 
-const app = express();
-
-app.get('/healthz', (_req, res) => {
-  res.json({ ok: true });
-});
-
-// Everything else is yours.
-
-// A plain http server, so you can attach WebSockets to it.
+const app = createApp();
 const server = createServer(app);
-server.listen(config.port, () => {
-  console.log(`server on http://localhost:${config.port}`);
+
+async function start(): Promise<void> {
+  await getDb();
+  await ensureIndexes();
+  await getRedis().ping();
+
+  server.listen(config.port, () => {
+    console.log(`server on http://localhost:${config.port}`);
+  });
+}
+
+async function shutdown(signal: string): Promise<void> {
+  console.log(`received ${signal}, shutting down`);
+  server.close(async () => {
+    await Promise.allSettled([closeDb(), closeRedis()]);
+    process.exit(0);
+  });
+}
+
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+
+start().catch((err) => {
+  console.error('failed to start server:', err);
+  process.exit(1);
 });
