@@ -1,6 +1,6 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useState, type FormEvent } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { CheckCircle2, Clock, Loader2, Lock, Search, UserCheck } from 'lucide-react';
+import { CheckCircle2, Clock, Loader2, Lock, Plus, Search, UserCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useDebounce } from '../hooks/useDebounce';
 import { useMinimumLoader } from '../hooks/useMinimumLoader';
@@ -10,6 +10,7 @@ import {
   selectContact,
   setSearchQuery,
   setStatusFilter,
+  startNewContact,
   type StatusFilter,
 } from '../store/inboxSlice';
 import type { Conversation } from '../types';
@@ -106,6 +107,8 @@ export const Sidebar = memo(function Sidebar() {
 
   const showLoader = useMinimumLoader(loadingConversations, 500);
   const debouncedQuery = useDebounce(searchQuery.trim().toLowerCase(), 200);
+  const [addingContact, setAddingContact] = useState(false);
+  const [newContact, setNewContact] = useState('');
 
   const filtered = useMemo(() => {
     return conversations.filter((c) => {
@@ -138,19 +141,64 @@ export const Sidebar = memo(function Sidebar() {
     [dispatch]
   );
 
+  const handleAddContact = useCallback(
+    (e: FormEvent) => {
+      e.preventDefault();
+      const contact = newContact.trim();
+      if (!contact || !activeWorkspace) return;
+      dispatch(startNewContact({ workspace: activeWorkspace, contact }));
+      void dispatch(fetchMessages({ workspace: activeWorkspace, contact }));
+      setNewContact('');
+      setAddingContact(false);
+    },
+    [dispatch, activeWorkspace, newContact]
+  );
+
   return (
     <aside className="glass-panel w-80 lg:w-96 shrink-0 rounded-3xl flex flex-col overflow-hidden">
       <div className="p-4 border-b border-pine-100/80 space-y-3 bg-white/40">
-        <div className="relative">
-          <Search className="h-4 w-4 text-pine-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => dispatch(setSearchQuery(e.target.value))}
-            placeholder="Search contact or assignee…"
-            className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl bg-cream-50/90 border border-pine-100 text-sm text-pine-900 placeholder:text-pine-500/70 focus:outline-none focus:ring-2 focus:ring-orange-400/60 focus:border-orange-400 transition"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="h-4 w-4 text-pine-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => dispatch(setSearchQuery(e.target.value))}
+              placeholder="Search contact or assignee…"
+              className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl bg-cream-50/90 border border-pine-100 text-sm text-pine-900 placeholder:text-pine-500/70 focus:outline-none focus:ring-2 focus:ring-orange-400/60 focus:border-orange-400 transition"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setAddingContact((v) => !v)}
+            aria-label="New Contact"
+            title="New Contact"
+            className="gloss-orange h-10 px-3 rounded-2xl text-white text-xs font-semibold flex items-center gap-1 shrink-0 cursor-pointer"
+          >
+            <Plus className="h-4 w-4" />
+            New
+          </button>
         </div>
+
+        {addingContact && (
+          <form onSubmit={handleAddContact} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newContact}
+              onChange={(e) => setNewContact(e.target.value)}
+              placeholder="+14155550199"
+              aria-label="Contact number"
+              className="flex-1 px-3 py-2 rounded-xl bg-white border border-pine-200 text-xs font-mono text-pine-900 focus:outline-none focus:ring-2 focus:ring-orange-400/60"
+            />
+            <button
+              type="submit"
+              disabled={!newContact.trim()}
+              className="gloss-pine px-3 py-2 rounded-xl text-white text-xs font-semibold disabled:opacity-50 cursor-pointer"
+            >
+              Start
+            </button>
+          </form>
+        )}
 
         <div className="flex gap-1.5">
           {FILTERS.map((f) => {

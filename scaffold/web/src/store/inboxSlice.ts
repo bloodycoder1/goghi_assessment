@@ -137,6 +137,24 @@ const inboxSlice = createSlice({
     selectContact: (state, action: PayloadAction<string | null>) => {
       state.selectedContact = action.payload;
     },
+    startNewContact: (state, action: PayloadAction<{ workspace: string; contact: string }>) => {
+      const contact = action.payload.contact.trim();
+      if (!contact) return;
+      if (!state.conversations.some((c) => c.contact === contact)) {
+        const nowIso = new Date().toISOString();
+        state.conversations.unshift({
+          workspace: action.payload.workspace,
+          contact,
+          assignee: null,
+          status: 'open',
+          lastActivityAt: nowIso,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        });
+        state.total += 1;
+      }
+      state.selectedContact = contact;
+    },
     setSearchQuery: (state, action: PayloadAction<string>) => {
       state.searchQuery = action.payload;
     },
@@ -274,6 +292,7 @@ const inboxSlice = createSlice({
 export const {
   resetInbox,
   selectContact,
+  startNewContact,
   setSearchQuery,
   setStatusFilter,
   clearError,

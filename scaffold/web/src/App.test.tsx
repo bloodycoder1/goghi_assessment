@@ -186,6 +186,13 @@ describe('Module 6: Switchboard React Inbox UI', () => {
       expect(within(sidebar).queryByText('+14155550101')).not.toBeInTheDocument();
       expect(within(sidebar).getByText('+14155550102')).toBeInTheDocument();
     });
+
+    // Clear search and start a new contact conversation from the sidebar
+    await user.clear(searchInput);
+    await user.click(screen.getByRole('button', { name: /new contact/i }));
+    await user.type(screen.getByLabelText(/contact number/i), '+14155550199');
+    await user.click(screen.getByRole('button', { name: /^start$/i }));
+    expect(await screen.findByPlaceholderText(/reply to \+14155550199/i)).toBeInTheDocument();
   });
 
   it('catches render errors in ErrorBoundary and shows fallback UI', () => {
