@@ -1,5 +1,14 @@
 node_modules/
 dist/
+coverage/
 .env
+.env.*
+!.env.example
 .check-logs/
 dump.rdb
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+*.pem
+*.key

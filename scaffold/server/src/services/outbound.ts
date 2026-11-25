@@ -35,6 +35,25 @@ export async function enqueueOutboundReply(input: EnqueueReplyInput): Promise<vo
   const db = await getDb();
   const now = new Date();
 
+  // Enqueue durable outbox job first so a mid-request crash never leaves an orphaned message without a job
+  try {
+    await db.collection<OutboxJobDoc>(COLLECTIONS.outboxJobs).insertOne({
+      workspace,
+      contact,
+      text,
+      clientRef,
+      status: 'pending',
+      attempts: 0,
+      nextRunAt: now,
+      lockedUntil: null,
+      lockedBy: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  } catch (err) {
+    if (!isDuplicateKeyError(err)) throw err;
+  }
+
   // Ensure conversation exists even if contact has not written yet
   await db.collection<ConversationDoc>(COLLECTIONS.conversations).updateOne(
     { workspace, contact },
@@ -63,25 +82,6 @@ export async function enqueueOutboundReply(input: EnqueueReplyInput): Promise<vo
       status: 'queued',
       occurredAt: now,
       createdAt: now,
-    });
-  } catch (err) {
-    if (!isDuplicateKeyError(err)) throw err;
-  }
-
-  // Enqueue durable outbox job idempotently
-  try {
-    await db.collection<OutboxJobDoc>(COLLECTIONS.outboxJobs).insertOne({
-      workspace,
-      contact,
-      text,
-      clientRef,
-      status: 'pending',
-      attempts: 0,
-      nextRunAt: now,
-      lockedUntil: null,
-      lockedBy: null,
-      createdAt: now,
-      updatedAt: now,
     });
   } catch (err) {
     if (!isDuplicateKeyError(err)) throw err;
