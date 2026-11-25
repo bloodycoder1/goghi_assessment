@@ -2,6 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { config } from '../config.js';
 import { COLLECTIONS, getDb } from '../db.js';
 import { getRedis } from '../redis.js';
+import { claimConversation } from '../services/conversations.js';
 import { enqueueOutboundReply, UnknownWorkspaceError } from '../services/outbound.js';
 import type { ConversationDoc, GraderSnapshot, MessageDoc } from '../types.js';
 
@@ -119,6 +120,37 @@ graderRouter.post('/reply', async (req: Request, res: Response) => {
       return;
     }
     console.error('grader reply error:', err);
+    res.status(500).json({ error: 'Internal error' });
+  }
+});
+
+graderRouter.post('/claim', async (req: Request, res: Response) => {
+  const { workspace, contact, agent } = (req.body ?? {}) as Record<string, unknown>;
+  if (
+    typeof workspace !== 'string' ||
+    !workspace ||
+    typeof contact !== 'string' ||
+    !contact ||
+    typeof agent !== 'string' ||
+    !agent
+  ) {
+    res.status(400).json({ error: 'Missing required fields: workspace, contact, agent' });
+    return;
+  }
+
+  try {
+    const result = await claimConversation(workspace, contact, agent);
+    if (result.claimed) {
+      res.status(200).json({ ok: true, assignee: result.assignee });
+      return;
+    }
+    res.status(409).json({ error: 'Already claimed', assignee: result.assignee });
+  } catch (err) {
+    if (err instanceof UnknownWorkspaceError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    console.error('grader claim error:', err);
     res.status(500).json({ error: 'Internal error' });
   }
 });
