@@ -2,6 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { config } from '../config.js';
 import { COLLECTIONS, getDb } from '../db.js';
 import { getRedis } from '../redis.js';
+import { enqueueOutboundReply, UnknownWorkspaceError } from '../services/outbound.js';
 import type { ConversationDoc, GraderSnapshot, MessageDoc } from '../types.js';
 
 export const graderRouter = Router();
@@ -86,4 +87,38 @@ graderRouter.get('/snapshot', async (_req: Request, res: Response) => {
   }
 
   res.status(200).json(snapshot);
+});
+
+graderRouter.post('/reply', async (req: Request, res: Response) => {
+  const { workspace, contact, text, client_ref } = (req.body ?? {}) as Record<string, unknown>;
+  if (
+    typeof workspace !== 'string' ||
+    !workspace ||
+    typeof contact !== 'string' ||
+    !contact ||
+    typeof text !== 'string' ||
+    !text ||
+    typeof client_ref !== 'string' ||
+    !client_ref
+  ) {
+    res.status(400).json({ error: 'Missing required fields: workspace, contact, text, client_ref' });
+    return;
+  }
+
+  try {
+    await enqueueOutboundReply({
+      workspace,
+      contact,
+      text,
+      clientRef: client_ref,
+    });
+    res.status(202).json({ ok: true, client_ref });
+  } catch (err) {
+    if (err instanceof UnknownWorkspaceError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    console.error('grader reply error:', err);
+    res.status(500).json({ error: 'Internal error' });
+  }
 });
