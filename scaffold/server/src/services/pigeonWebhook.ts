@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { COLLECTIONS, getDb } from '../db.js';
 import type { ConversationDoc, MessageDoc, OutboundStatus, WebhookEventDoc } from '../types.js';
 import { publishWorkspaceEvent } from './realtime.js';
+import { indexMessageForSearch } from './search.js';
 
 export interface SignatureCheckResult {
   ok: boolean;
@@ -152,6 +153,14 @@ export async function handlePigeonEvent(
         text,
         occurred_at: occurredAt.toISOString(),
       });
+      void indexMessageForSearch({
+        id: `${workspace}:${messageId}`,
+        workspace,
+        contact: from,
+        direction: 'inbound',
+        text,
+        occurredAt,
+      }).catch(() => undefined);
     } catch (err) {
       if (!isDuplicateKeyError(err)) throw err;
     }

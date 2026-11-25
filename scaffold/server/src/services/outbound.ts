@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { COLLECTIONS, getDb } from '../db.js';
 import type { ConversationDoc, MessageDoc, OutboxJobDoc } from '../types.js';
 import { publishWorkspaceEvent } from './realtime.js';
+import { indexMessageForSearch } from './search.js';
 
 export interface EnqueueReplyInput {
   workspace: string;
@@ -90,6 +91,14 @@ export async function enqueueOutboundReply(input: EnqueueReplyInput): Promise<vo
       status: 'queued',
       text,
     });
+    void indexMessageForSearch({
+      id: `${workspace}:${clientRef}`,
+      workspace,
+      contact,
+      direction: 'outbound',
+      text,
+      occurredAt: now,
+    }).catch(() => undefined);
   } catch (err) {
     if (!isDuplicateKeyError(err)) throw err;
   }

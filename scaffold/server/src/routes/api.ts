@@ -12,7 +12,15 @@ import {
   listConversations,
   setConversationStatus,
 } from '../services/conversations.js';
+import {
+  createEncryptedNote,
+  getWorkspaceKeyBundle,
+  listEncryptedNotes,
+  registerAgentPublicKey,
+  storeWorkspaceKeyEnvelope,
+} from '../services/notes.js';
 import { enqueueOutboundReply, UnknownWorkspaceError } from '../services/outbound.js';
+import { searchWorkspaceMessages } from '../services/search.js';
 
 export interface AuthedRequest extends Request {
   user?: SessionUser;
@@ -145,3 +153,111 @@ apiRouter.post(
     res.status(202).json({ ok: true, client_ref: clientRef });
   }
 );
+
+// --- Module 8: E2EE Private Notes & Key Distribution ---
+apiRouter.post('/keys/register', async (req: AuthedRequest, res: Response) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  if (!body.publicKeyJwk || typeof body.publicKeyJwk !== 'object') {
+    res.status(400).json({ error: 'publicKeyJwk is required' });
+    return;
+  }
+  await registerAgentPublicKey(req.user!.sub, body.publicKeyJwk as Record<string, unknown>);
+  res.status(200).json({ ok: true });
+});
+
+apiRouter.get('/keys/workspace', requireWorkspaceMember, async (req: AuthedRequest, res: Response) => {
+  const workspace = getWorkspaceParam(req);
+  const bundle = await getWorkspaceKeyBundle(workspace, req.user!.sub);
+  res.status(200).json(bundle);
+});
+
+apiRouter.post('/keys/wrap', requireWorkspaceMember, async (req: AuthedRequest, res: Response) => {
+  const workspace = getWorkspaceParam(req);
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const { recipientSub, keyVersion, wrappedKey, ephemeralPublicKeyJwk, iv } = body;
+  if (
+    typeof recipientSub !== 'string' ||
+    !recipientSub ||
+    typeof keyVersion !== 'number' ||
+    typeof wrappedKey !== 'string' ||
+    !wrappedKey ||
+    !ephemeralPublicKeyJwk ||
+    typeof ephemeralPublicKeyJwk !== 'object' ||
+    typeof iv !== 'string' ||
+    !iv
+  ) {
+    res.status(400).json({ error: 'Invalid wrapped key envelope' });
+    return;
+  }
+
+  await storeWorkspaceKeyEnvelope({
+    workspace,
+    recipientSub,
+    senderSub: req.user!.sub,
+    keyVersion,
+    wrappedKey,
+    ephemeralPublicKeyJwk: ephemeralPublicKeyJwk as Record<string, unknown>,
+    iv,
+  });
+  res.status(200).json({ ok: true });
+});
+
+apiRouter.get(
+  '/conversations/:contact/notes',
+  requireWorkspaceMember,
+  async (req: AuthedRequest, res: Response) => {
+    const workspace = getWorkspaceParam(req);
+    const contact = String(req.params.contact);
+    const notes = await listEncryptedNotes(workspace, contact);
+    res.status(200).json({ notes });
+  }
+);
+
+apiRouter.post(
+  '/conversations/:contact/notes',
+  requireWorkspaceMember,
+  async (req: AuthedRequest, res: Response) => {
+    const workspace = getWorkspaceParam(req);
+    const contact = String(req.params.contact);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    if ('plaintext' in body || 'text' in body) {
+      res.status(400).json({ error: 'Plaintext notes are forbidden; encrypt client-side' });
+      return;
+    }
+
+    const { ciphertext, iv, aad, keyVersion } = body;
+    if (
+      typeof ciphertext !== 'string' ||
+      !ciphertext ||
+      typeof iv !== 'string' ||
+      !iv ||
+      typeof aad !== 'string' ||
+      !aad ||
+      typeof keyVersion !== 'number'
+    ) {
+      res.status(400).json({ error: 'Missing required encrypted note fields' });
+      return;
+    }
+
+    const note = await createEncryptedNote({
+      workspace,
+      contact,
+      authorSub: req.user!.sub,
+      ciphertext,
+      iv,
+      aad,
+      keyVersion,
+    });
+    res.status(201).json({ note });
+  }
+);
+
+// --- Module 9: Workspace-Scoped Search ---
+apiRouter.get('/search', requireWorkspaceMember, async (req: AuthedRequest, res: Response) => {
+  const workspace = getWorkspaceParam(req);
+  const q = typeof req.query.q === 'string' ? req.query.q : '';
+  const limit = req.query.limit ? Number(req.query.limit) : 25;
+  const result = await searchWorkspaceMessages(workspace, q, limit);
+  res.status(200).json(result);
+});

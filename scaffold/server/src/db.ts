@@ -10,6 +10,9 @@ export const COLLECTIONS = {
   webhookEvents: 'webhook_events',
   outboxJobs: 'outbox_jobs',
   wsEvents: 'ws_events',
+  privateNotes: 'private_notes',
+  agentKeys: 'agent_keys',
+  workspaceKeyEnvelopes: 'workspace_key_envelopes',
 } as const;
 
 // Connects on first use. Call from anywhere: const db = await getDb();
@@ -65,6 +68,19 @@ export async function ensureIndexes(): Promise<void> {
         }),
         db.collection(COLLECTIONS.wsEvents).createIndex(
           { workspace: 1, seq: 1 },
+          { unique: true }
+        ),
+        db.collection(COLLECTIONS.privateNotes).createIndex({
+          workspace: 1,
+          contact: 1,
+          createdAt: 1,
+        }),
+        db.collection(COLLECTIONS.agentKeys).createIndex(
+          { sub: 1 },
+          { unique: true }
+        ),
+        db.collection(COLLECTIONS.workspaceKeyEnvelopes).createIndex(
+          { workspace: 1, recipientSub: 1, keyVersion: 1 },
           { unique: true }
         ),
       ]);
