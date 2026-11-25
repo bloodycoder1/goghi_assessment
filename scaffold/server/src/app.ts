@@ -33,6 +33,16 @@ export function createApp(): Express {
 
   app.use(express.json());
 
+  app.get('/', (_req, res) => {
+    res.status(200).json({
+      name: 'switchboard-server',
+      ok: true,
+      health: '/healthz',
+      docs: '/docs/',
+      openapi: '/openapi.json',
+    });
+  });
+
   app.get('/healthz', async (_req, res) => {
     try {
       const db = await getDb();
