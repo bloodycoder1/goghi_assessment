@@ -54,6 +54,8 @@ describe('Module 10: Paybox Per-Seat Billing & Enforcement', () => {
   });
 
   afterAll(async () => {
+    const db = await getDb();
+    await db.collection(COLLECTIONS.billingWorkspaces).deleteMany({});
     await Promise.allSettled([closeDb(), closeRedis()]);
   });
 

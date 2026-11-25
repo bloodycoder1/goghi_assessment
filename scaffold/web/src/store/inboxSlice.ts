@@ -113,7 +113,12 @@ export const sendReply = createAsyncThunk(
         body: JSON.stringify({ text, client_ref: clientRef }),
       }
     );
-    if (!res.ok) throw new Error(`Send failed (${res.status})`);
+    if (!res.ok) {
+      if (res.status === 402) {
+        throw new Error('Subscription canceled or incomplete; sending is disabled (402).');
+      }
+      throw new Error(`Send failed (${res.status})`);
+    }
     return { workspace, contact, text, clientRef };
   }
 );

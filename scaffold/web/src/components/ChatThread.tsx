@@ -145,6 +145,8 @@ export const ChatThread = memo(function ChatThread() {
           })
         ).unwrap();
         setDraft('');
+      } catch (err) {
+        console.warn('reply failed:', err);
       } finally {
         setSending(false);
       }
