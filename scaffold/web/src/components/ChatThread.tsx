@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   AlertCircle,
   Check,
   CheckCheck,
   Clock,
+  Loader2,
   Lock,
   MessageSquare,
   RotateCcw,
@@ -13,6 +14,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useMinimumLoader } from '../hooks/useMinimumLoader';
 import type { AppDispatch, RootState } from '../store';
 import {
   claimConversation,
@@ -20,9 +22,9 @@ import {
   sendReply,
   toggleConversationStatus,
 } from '../store/inboxSlice';
-import type { OutboundStatus } from '../types';
+import type { Message, OutboundStatus } from '../types';
 
-function StatusBadge({ status }: { status?: OutboundStatus }) {
+const StatusBadge = memo(function StatusBadge({ status }: { status?: OutboundStatus }) {
   if (status === 'delivered') {
     return (
       <span className="inline-flex items-center gap-1 text-[11px] text-pine-100">
@@ -49,9 +51,39 @@ function StatusBadge({ status }: { status?: OutboundStatus }) {
       <Clock className="h-3 w-3" /> queued
     </span>
   );
-}
+});
 
-export function ChatThread() {
+const MessageBubble = memo(function MessageBubble({ m }: { m: Message }) {
+  const isOut = m.direction === 'outbound';
+  return (
+    <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+          isOut
+            ? 'gloss-pine text-white rounded-br-sm'
+            : 'bg-white/95 border border-pine-100 text-pine-900 rounded-bl-sm'
+        }`}
+      >
+        <p className="whitespace-pre-wrap break-words leading-relaxed">{m.text}</p>
+        <div
+          className={`mt-1.5 flex items-center justify-end gap-2 text-[11px] ${
+            isOut ? 'text-pine-200' : 'text-pine-500'
+          }`}
+        >
+          <span>
+            {new Date(m.occurredAt).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
+          {isOut && <StatusBadge status={m.status} />}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+export const ChatThread = memo(function ChatThread() {
   const { user, activeWorkspace } = useAuth();
   const dispatch = useDispatch<AppDispatch>();
   const { conversations, selectedContact, messagesByContact, loadingMessages, error } = useSelector(
@@ -62,12 +94,63 @@ export function ChatThread() {
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const conversation = conversations.find((c) => c.contact === selectedContact) ?? null;
-  const messages = selectedContact ? messagesByContact[selectedContact] ?? [] : [];
+  const showMessagesLoader = useMinimumLoader(loadingMessages, 500);
+
+  const conversation = useMemo(
+    () => conversations.find((c) => c.contact === selectedContact) ?? null,
+    [conversations, selectedContact]
+  );
+
+  const messages = useMemo(
+    () => (selectedContact ? messagesByContact[selectedContact] ?? [] : []),
+    [selectedContact, messagesByContact]
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length, selectedContact]);
+
+  const handleClaim = useCallback(() => {
+    if (!conversation) return;
+    void dispatch(claimConversation({ workspace: activeWorkspace, contact: conversation.contact }));
+  }, [dispatch, activeWorkspace, conversation]);
+
+  const handleToggleStatus = useCallback(() => {
+    if (!conversation) return;
+    const next = conversation.status === 'open' ? 'closed' : 'open';
+    void dispatch(
+      toggleConversationStatus({
+        workspace: activeWorkspace,
+        contact: conversation.contact,
+        status: next,
+      })
+    );
+  }, [dispatch, activeWorkspace, conversation]);
+
+  const handleSend = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      if (!conversation) return;
+      const text = draft.trim();
+      if (!text || sending) return;
+      setSending(true);
+      try {
+        const clientRef = `ui_${crypto.randomUUID()}`;
+        await dispatch(
+          sendReply({
+            workspace: activeWorkspace,
+            contact: conversation.contact,
+            text,
+            clientRef,
+          })
+        ).unwrap();
+        setDraft('');
+      } finally {
+        setSending(false);
+      }
+    },
+    [conversation, draft, sending, dispatch, activeWorkspace]
+  );
 
   if (!selectedContact || !conversation) {
     return (
@@ -85,42 +168,6 @@ export function ChatThread() {
 
   const isClaimedByMe = conversation.assignee === user?.sub;
   const isClaimedByOther = Boolean(conversation.assignee && !isClaimedByMe);
-
-  const handleClaim = () => {
-    void dispatch(claimConversation({ workspace: activeWorkspace, contact: conversation.contact }));
-  };
-
-  const handleToggleStatus = () => {
-    const next = conversation.status === 'open' ? 'closed' : 'open';
-    void dispatch(
-      toggleConversationStatus({
-        workspace: activeWorkspace,
-        contact: conversation.contact,
-        status: next,
-      })
-    );
-  };
-
-  const handleSend = async (e: FormEvent) => {
-    e.preventDefault();
-    const text = draft.trim();
-    if (!text || sending) return;
-    setSending(true);
-    try {
-      const clientRef = `ui_${crypto.randomUUID()}`;
-      await dispatch(
-        sendReply({
-          workspace: activeWorkspace,
-          contact: conversation.contact,
-          text,
-          clientRef,
-        })
-      ).unwrap();
-      setDraft('');
-    } finally {
-      setSending(false);
-    }
-  };
 
   return (
     <section className="glass-panel flex-1 rounded-3xl flex flex-col overflow-hidden">
@@ -201,45 +248,19 @@ export function ChatThread() {
       )}
 
       <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-cream-50/40">
-        {loadingMessages && messages.length === 0 ? (
-          <div className="text-center text-sm text-pine-600 py-8">Loading messages…</div>
+        {showMessagesLoader && messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 text-sm text-pine-600 py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-orange-500" />
+            <span>Loading messages…</span>
+          </div>
         ) : messages.length === 0 ? (
           <div className="text-center text-sm text-pine-600 py-8">
             No messages yet. Send a reply below to start the conversation.
           </div>
         ) : (
-          messages.map((m, idx) => {
-            const isOut = m.direction === 'outbound';
-            return (
-              <div
-                key={m.pigeonMessageId ?? m.clientRef ?? idx}
-                className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                    isOut
-                      ? 'gloss-pine text-white rounded-br-sm'
-                      : 'bg-white/95 border border-pine-100 text-pine-900 rounded-bl-sm'
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap break-words leading-relaxed">{m.text}</p>
-                  <div
-                    className={`mt-1.5 flex items-center justify-end gap-2 text-[11px] ${
-                      isOut ? 'text-pine-200' : 'text-pine-500'
-                    }`}
-                  >
-                    <span>
-                      {new Date(m.occurredAt).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                    {isOut && <StatusBadge status={m.status} />}
-                  </div>
-                </div>
-              </div>
-            );
-          })
+          messages.map((m, idx) => (
+            <MessageBubble key={m.pigeonMessageId ?? m.clientRef ?? idx} m={m} />
+          ))
         )}
         <div ref={bottomRef} />
       </div>
@@ -266,4 +287,4 @@ export function ChatThread() {
       </form>
     </section>
   );
-}
+});

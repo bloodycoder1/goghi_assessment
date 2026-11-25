@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AuthProvider } from './context/AuthContext';
 import { RealtimeProvider } from './context/RealtimeContext';
 import inboxReducer from './store/inboxSlice';
@@ -185,5 +186,20 @@ describe('Module 6: Switchboard React Inbox UI', () => {
       expect(within(sidebar).queryByText('+14155550101')).not.toBeInTheDocument();
       expect(within(sidebar).getByText('+14155550102')).toBeInTheDocument();
     });
+  });
+
+  it('catches render errors in ErrorBoundary and shows fallback UI', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    function Boom(): never {
+      throw new Error('simulated crash');
+    }
+    render(
+      <ErrorBoundary>
+        <Boom />
+      </ErrorBoundary>
+    );
+    expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /reload application/i })).toBeInTheDocument();
+    consoleSpy.mockRestore();
   });
 });

@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import { ArrowRight, Inbox, ShieldCheck, Zap } from 'lucide-react';
 
-export function LoginScreen() {
+export const LoginScreen = memo(function LoginScreen() {
   return (
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top_left,_#e3efe8_0%,_#f8fbf9_50%,_#fff4eb_100%)] flex items-center justify-center p-6">
       <div className="glass-panel w-full max-w-md rounded-3xl p-8 space-y-7">
@@ -35,4 +36,4 @@ export function LoginScreen() {
       </div>
     </div>
   );
-}
+});

@@ -1,18 +1,33 @@
-import { Inbox, LogOut, Radio } from 'lucide-react';
+import { useCallback } from 'react';
+import { Inbox, Loader2, LogOut, Radio } from 'lucide-react';
 import { ChatThread } from './components/ChatThread';
 import { LoginScreen } from './components/LoginScreen';
 import { Sidebar } from './components/Sidebar';
 import { useAuth } from './context/AuthContext';
 import { useRealtime } from './context/RealtimeContext';
+import { useMinimumLoader } from './hooks/useMinimumLoader';
 
 export function App() {
   const { user, loading, activeWorkspace, setActiveWorkspace, logout } = useAuth();
   const { wsStatus, lastSeq } = useRealtime();
+  const showAuthLoader = useMinimumLoader(loading, 500);
 
-  if (loading) {
+  const handleWorkspaceChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      setActiveWorkspace(e.target.value);
+    },
+    [setActiveWorkspace]
+  );
+
+  const handleLogout = useCallback(() => {
+    void logout();
+  }, [logout]);
+
+  if (showAuthLoader) {
     return (
-      <div className="min-h-screen bg-cream-50 flex items-center justify-center text-pine-700 font-medium">
-        Loading Switchboard…
+      <div className="min-h-screen bg-cream-50 flex flex-col items-center justify-center gap-3 text-pine-700 font-medium">
+        <Loader2 className="h-7 w-7 animate-spin text-orange-500" />
+        <span>Loading Switchboard…</span>
       </div>
     );
   }
@@ -50,7 +65,7 @@ export function App() {
 
           <select
             value={activeWorkspace}
-            onChange={(e) => setActiveWorkspace(e.target.value)}
+            onChange={handleWorkspaceChange}
             aria-label="Workspace"
             className="px-3 py-1.5 rounded-xl bg-white border border-pine-200 text-xs font-semibold text-pine-800 focus:outline-none focus:ring-2 focus:ring-orange-400/60 cursor-pointer"
           >
@@ -63,7 +78,7 @@ export function App() {
 
           <button
             type="button"
-            onClick={() => void logout()}
+            onClick={handleLogout}
             className="px-3 py-1.5 rounded-xl bg-cream-100 hover:bg-orange-50 border border-pine-200 hover:border-orange-300 text-xs font-semibold text-pine-800 flex items-center gap-1.5 transition cursor-pointer"
           >
             <LogOut className="h-3.5 w-3.5 text-orange-500" />

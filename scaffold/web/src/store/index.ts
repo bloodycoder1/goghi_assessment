@@ -1,11 +1,39 @@
 import { configureStore } from '@reduxjs/toolkit';
+import {
+  FLUSH,
+  PAUSE,
+  PERSIST,
+  PURGE,
+  REGISTER,
+  REHYDRATE,
+  persistReducer,
+  persistStore,
+} from 'redux-persist';
+import storage from 'redux-persist/lib/storage';
 import inboxReducer from './inboxSlice';
+
+const inboxPersistConfig = {
+  key: 'switchboard_inbox',
+  storage,
+  // Persist only non-sensitive UI navigation state; messages and auth stay in-memory/server-side.
+  whitelist: ['selectedContact', 'statusFilter'],
+};
+
+const persistedInboxReducer = persistReducer(inboxPersistConfig, inboxReducer);
 
 export const store = configureStore({
   reducer: {
-    inbox: inboxReducer,
+    inbox: persistedInboxReducer,
   },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      serializableCheck: {
+        ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
+      },
+    }),
 });
+
+export const persistor = persistStore(store);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
