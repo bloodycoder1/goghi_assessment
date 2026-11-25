@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { COLLECTIONS, getDb } from '../db.js';
 import type { ConversationDoc, ConversationStatus, MessageDoc } from '../types.js';
 import { UnknownWorkspaceError } from './outbound.js';
+import { publishWorkspaceEvent } from './realtime.js';
 
 function isDuplicateKeyError(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { code?: number }).code === 11000;
@@ -41,6 +42,10 @@ export async function claimConversation(
 
   const updated = await tryAtomicClaim();
   if (updated) {
+    await publishWorkspaceEvent(workspace, 'conversation.assigned', {
+      contact,
+      assignee: updated.assignee,
+    });
     return { claimed: true, assignee: updated.assignee, conversation: updated };
   }
 
@@ -62,12 +67,20 @@ export async function claimConversation(
 
   try {
     await col.insertOne(newDoc);
+    await publishWorkspaceEvent(workspace, 'conversation.assigned', {
+      contact,
+      assignee: agent,
+    });
     return { claimed: true, assignee: agent, conversation: newDoc };
   } catch (err) {
     if (!isDuplicateKeyError(err)) throw err;
 
     const retry = await tryAtomicClaim();
     if (retry) {
+      await publishWorkspaceEvent(workspace, 'conversation.assigned', {
+        contact,
+        assignee: retry.assignee,
+      });
       return { claimed: true, assignee: retry.assignee, conversation: retry };
     }
     const winner = await col.findOne({ workspace, contact });
@@ -88,11 +101,18 @@ export async function setConversationStatus(
     throw new UnknownWorkspaceError(workspace);
   }
   const db = await getDb();
-  return db.collection<ConversationDoc>(COLLECTIONS.conversations).findOneAndUpdate(
+  const updated = await db.collection<ConversationDoc>(COLLECTIONS.conversations).findOneAndUpdate(
     { workspace, contact },
     { $set: { status, updatedAt: new Date() } },
     { returnDocument: 'after' }
   );
+  if (updated) {
+    await publishWorkspaceEvent(workspace, 'conversation.status', {
+      contact,
+      status,
+    });
+  }
+  return updated;
 }
 
 export interface ListConversationsOptions {

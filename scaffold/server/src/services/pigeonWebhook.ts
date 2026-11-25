@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { COLLECTIONS, getDb } from '../db.js';
 import type { ConversationDoc, MessageDoc, OutboundStatus, WebhookEventDoc } from '../types.js';
+import { publishWorkspaceEvent } from './realtime.js';
 
 export interface SignatureCheckResult {
   ok: boolean;
@@ -145,6 +146,12 @@ export async function handlePigeonEvent(
         occurredAt,
         createdAt: now,
       });
+      await publishWorkspaceEvent(workspace, 'message.inbound', {
+        contact: from,
+        message_id: messageId,
+        text,
+        occurred_at: occurredAt.toISOString(),
+      });
     } catch (err) {
       if (!isDuplicateKeyError(err)) throw err;
     }
@@ -161,7 +168,7 @@ export async function handlePigeonEvent(
     const allowedPrevious: OutboundStatus[] =
       STATUS_RANK[status] === 1 ? ['queued'] : ['queued', 'sent'];
 
-    await db.collection<MessageDoc>(COLLECTIONS.messages).updateOne(
+    const updatedMsg = await db.collection<MessageDoc>(COLLECTIONS.messages).findOneAndUpdate(
       {
         workspace,
         direction: 'outbound',
@@ -170,8 +177,16 @@ export async function handlePigeonEvent(
       },
       {
         $set: { status },
-      }
+      },
+      { returnDocument: 'after' }
     );
+    if (updatedMsg) {
+      await publishWorkspaceEvent(workspace, 'message.status', {
+        contact: updatedMsg.contact,
+        client_ref: clientRef,
+        status,
+      });
+    }
     return;
   }
 

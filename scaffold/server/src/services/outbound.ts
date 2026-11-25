@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { COLLECTIONS, getDb } from '../db.js';
 import type { ConversationDoc, MessageDoc, OutboxJobDoc } from '../types.js';
+import { publishWorkspaceEvent } from './realtime.js';
 
 export interface EnqueueReplyInput {
   workspace: string;
@@ -82,6 +83,12 @@ export async function enqueueOutboundReply(input: EnqueueReplyInput): Promise<vo
       status: 'queued',
       occurredAt: now,
       createdAt: now,
+    });
+    await publishWorkspaceEvent(workspace, 'message.outbound', {
+      contact,
+      client_ref: clientRef,
+      status: 'queued',
+      text,
     });
   } catch (err) {
     if (!isDuplicateKeyError(err)) throw err;
