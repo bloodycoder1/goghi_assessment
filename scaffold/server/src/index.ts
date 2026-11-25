@@ -23,10 +23,21 @@ async function start(): Promise<void> {
   });
 }
 
+let shuttingDown = false;
+
 async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.log(`received ${signal}, shutting down`);
+
+  const forceExit = setTimeout(() => {
+    process.exit(1);
+  }, 5000);
+  forceExit.unref();
+
   await outboxWorker.stop();
   await wsManager.close();
+  server.closeIdleConnections?.();
   server.close(async () => {
     await Promise.allSettled([closeDb(), closeRedis()]);
     process.exit(0);

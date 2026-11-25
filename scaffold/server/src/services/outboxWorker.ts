@@ -8,7 +8,7 @@ import {
   markWorkspaceRateLimited,
 } from './rateLimiter.js';
 
-const LEASE_MS = 20_000;
+const LEASE_MS = 18_000;
 const REQUEST_TIMEOUT_MS = 14_000;
 const IDLE_POLL_MS = 150;
 
@@ -19,13 +19,14 @@ export interface OutboxWorkerOptions {
 }
 
 export class OutboxWorker {
-  private readonly workerId = `worker_${process.pid}_${crypto.randomUUID().slice(0, 8)}`;
+  readonly workerId = `worker_${process.pid}_${crypto.randomUUID().slice(0, 8)}`;
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
   private readonly leaseMs: number;
   private running = false;
   private timer: NodeJS.Timeout | null = null;
   private processing = false;
+  private inFlightAbort: AbortController | null = null;
 
   constructor(options: OutboxWorkerOptions = {}) {
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -47,10 +48,31 @@ export class OutboxWorker {
       clearTimeout(this.timer);
       this.timer = null;
     }
+    if (this.inFlightAbort) {
+      this.inFlightAbort.abort();
+    }
     // Wait briefly if a job tick is currently in flight
-    const deadline = Date.now() + 2000;
+    const deadline = Date.now() + 3000;
     while (this.processing && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 25));
+    }
+    // Release any jobs still leased by this worker so surviving copies can pick them up immediately
+    try {
+      const db = await getDb();
+      await db.collection<OutboxJobDoc>(COLLECTIONS.outboxJobs).updateMany(
+        { status: 'sending', lockedBy: this.workerId },
+        {
+          $set: {
+            status: 'pending',
+            lockedUntil: null,
+            lockedBy: null,
+            nextRunAt: new Date(),
+            updatedAt: new Date(),
+          },
+        }
+      );
+    } catch {
+      // ignore if DB already closed
     }
   }
 
@@ -153,6 +175,9 @@ export class OutboxWorker {
       return;
     }
 
+    const abortController = new AbortController();
+    this.inFlightAbort = abortController;
+
     try {
       const response = await this.fetchImpl(`${config.pigeon.url}/v1/messages`, {
         method: 'POST',
@@ -166,7 +191,10 @@ export class OutboxWorker {
           text: job.text,
           client_ref: job.clientRef,
         }),
-        signal: AbortSignal.timeout(this.requestTimeoutMs),
+        signal: AbortSignal.any([
+          abortController.signal,
+          AbortSignal.timeout(this.requestTimeoutMs),
+        ]),
       });
 
       if (response.ok) {
@@ -205,7 +233,7 @@ export class OutboxWorker {
         await markWorkspaceRateLimited(job.workspace, retryAfterSec);
 
         await jobsCol.updateOne(
-          { workspace: job.workspace, clientRef: job.clientRef },
+          { workspace: job.workspace, clientRef: job.clientRef, lockedBy: this.workerId },
           {
             $set: {
               status: 'pending',
@@ -221,7 +249,7 @@ export class OutboxWorker {
 
       if (response.status >= 400 && response.status < 500) {
         await jobsCol.updateOne(
-          { workspace: job.workspace, clientRef: job.clientRef },
+          { workspace: job.workspace, clientRef: job.clientRef, lockedBy: this.workerId },
           {
             $set: {
               status: 'failed',
@@ -246,7 +274,7 @@ export class OutboxWorker {
       // 5xx (e.g. 503 outage): retry with bounded exponential backoff
       const backoffMs = Math.min(3000, 250 * 2 ** Math.min(job.attempts, 4));
       await jobsCol.updateOne(
-        { workspace: job.workspace, clientRef: job.clientRef },
+        { workspace: job.workspace, clientRef: job.clientRef, lockedBy: this.workerId },
         {
           $set: {
             status: 'pending',
@@ -258,10 +286,12 @@ export class OutboxWorker {
         }
       );
     } catch {
-      // Network error or 12s+ timeout: retry with same Idempotency-Key
-      const backoffMs = Math.min(3000, 250 * 2 ** Math.min(job.attempts, 4));
+      // Network error, abort, or 12s+ timeout: retry with same Idempotency-Key
+      const backoffMs = abortController.signal.aborted
+        ? 0
+        : Math.min(3000, 250 * 2 ** Math.min(job.attempts, 4));
       await jobsCol.updateOne(
-        { workspace: job.workspace, clientRef: job.clientRef },
+        { workspace: job.workspace, clientRef: job.clientRef, lockedBy: this.workerId },
         {
           $set: {
             status: 'pending',
@@ -272,6 +302,10 @@ export class OutboxWorker {
           },
         }
       );
+    } finally {
+      if (this.inFlightAbort === abortController) {
+        this.inFlightAbort = null;
+      }
     }
   }
 }
